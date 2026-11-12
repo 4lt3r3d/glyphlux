@@ -16,7 +16,13 @@ Full history, feature list, roadmap and reference links are in the main doc, imp
   - the asciiarena API dig;
   - the style analysis of 75,614 real logos (`logo-style-findings.md`, `logo_style_stats.json`).
 - Next build queue (user picks one per session):
-  1. **Logo A: Amiga import.** Latin-1 decoder, embedded Topaz font (rewtnull/amigafonts, GPL-FE, credit required). Let `.txt` load as art when it isn't a palette. *Planned next step.*
+  0. **World size + zoom floor.** *Planned next build (decided 2026-11-12).*
+     - Problem: with canvas size `fit`, zooming out shows a small canvas surrounded by black.
+     - Add a world-size setting: fit / 2× / 4× / 8× the view. The canvas becomes that larger fixed world.
+     - Clamp minimum zoom so the world always fills the screen (never black edges).
+     - Keep a fixed world, not an endless field: exports, imports and logos need a definite frame.
+     - If 4×/8× is slow in ascii mode, do the tinted glyph cache fix (leftover ⑦) right after.
+  1. **Logo A: Amiga import.** Latin-1 decoder, embedded Topaz font (rewtnull/amigafonts, GPL-FE, credit required). Let `.txt` load as art when it isn't a palette.
   2. **Logo B: imported art as a third logo source.** Next to bitmap / FIGlet, so all 20 text fx run on real logos.
   3. **Logo C: generator.** Approach still undecided: rule-based outliner, tile-based from the 3×3 patches, or both.
   4. **Export Save window.** Picker with a fixed id, remembers its last folder, defaults to `exports\`, falls back to a plain download.

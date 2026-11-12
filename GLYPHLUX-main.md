@@ -72,6 +72,18 @@ Known issues:
 - ③ separate blend controls for embed vs overlay text modes
 - ⑦ atlas perf fix: tinted glyph cache so source-colour / custom-colour ascii doesn't fall back to per-cell fillText
 
+### World size + zoom floor (decided 2026-11-12, next build)
+- Problem: with canvas size **fit**, the canvas equals the window, so zooming out (e.g. 0.17) shows a small canvas surrounded by black. User wants the field to fill the screen when zoomed out, much larger than now.
+- Decision: a fixed, larger world rather than an endless field.
+  - Add a world-size setting: fit / 2× / 4× / 8× the view.
+  - Clamp minimum zoom so the world always fills the screen.
+- Why not an endless field:
+  - Exports (PNG/GIF/video/player/wallpaper) need a definite frame.
+  - Imports and logos are finite.
+  - It would mean reworking mouse, effects, layers and text placement before the logo system.
+- Cost: cell count grows with world size (4× = 16× cells). If ascii mode gets slow, do the ⑦ tinted glyph cache fix right after.
+- Order: before Logo A (Amiga import).
+
 ### Export save location (added 2026-11-12)
 - Exports should open a Save window instead of downloading straight to B:\Downloads.
 - First export: user picks `C:\Tools\glyphlux\exports` once. After that the Save window opens in the last folder chosen for a GLYPHLUX export (exports\ by default; if they save elsewhere once, it opens there next time). Never forces exports\.
