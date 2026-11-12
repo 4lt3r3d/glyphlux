@@ -151,7 +151,7 @@ body.drop #stage::after{content:"drop: image video gif glsl obj gltf nfo ans aud
   </div>
   <div id="scroll"></div>
   <div id="zbar"><button class="zb" id="zout" title="zoom out">-</button><div id="zsl"></div><button class="zb" id="zin" title="zoom in">+</button><button class="zb" id="zfit" title="fit canvas in view (ctrl+0)">fit</button><button class="zb" id="z100" title="actual pixels">100%</button></div>
-  <div id="keys"><b>space</b> freeze  <b>h</b> hide  <b>p</b> png  <b>r</b> rec  <b>c</b> clear  <b>ctrl</b>+wheel zoom  <b>space</b>+drag pan</div>
+  <div id="keys"><b>space</b> freeze  <b>h</b> hide  <b>p</b> png  <b>r</b> rec  <b>c</b> clear  <b>t</b> text fx  <b>ctrl</b>+wheel zoom  <b>space</b>+drag pan</div>
   <div id="stat">ready. move, click, hold, drag.</div>
   <button id="tab" aria-label="show controls">&gt;</button>
 </aside>
@@ -238,6 +238,7 @@ const DEF={
   vidAudio:true,vidVol:.8,vidRate:1,vidLoop:true,extAudio:true,zoom:1,zoomFit:true,
   camFlipH:true,camFlipV:false,camBright:1,camCon:1,camFreeze:false,
   face:'mono',
+  txFx:'random',txTrig:'click',txBand:'bass',txEvery:4,txSpeed:1,txLoop:false,txSettle:220,
   clickStyle:'ripple',clickRadius:240,clickForce:1.2,clickDecay:1,charge:true,
   dragRadius:120,dragForce:1,dragDecay:.965,dragWake:.35,
   fx:[],smooth:.1,gifSecs:3,gifFps:20,gifW:480,recFmt:'webm',recFps:60,recMbps:12,recAudio:true,embedUrl:'',
@@ -969,7 +970,147 @@ function rasterLogo(){
   }
   LGON=true;
   if(useCode&&!fig)asciiize();
+  if(TX)txApply();
 }
+
+/* ------------------------------------------------------------------ text fx
+   one-shot animations on the logo's pixel cells. runs after rasterLogo has stamped the resting logo: every lit cell
+   is lifted out, moved / dimmed / re-glyphed by the active effect, then stamped back, so the result goes through the
+   same pixel treatment as everything else. each effect gives every cell a lock time (0..1 of the run). before it, the
+   effect's motion runs; after it, the cell eases from wherever it was into its resting cell over the settle time. */
+const TXFX=['decrypt','scatter','assemble','laseretch','crumble','burn','vhstape','blackhole','fireworks','matrix',
+            'glitch','bubbles','wipe','slide','pour','waves','sweep','unstable','smoke','rings'];
+const TXG='!#$%&*+-/0123456789<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_{|}~░▒▓█';
+let TX=null,txClock=0,txDone=0,txBag=[],txLast='',txBeatPrev=false;
+let txIdx=new Int32Array(0),txV=null,txC=null,txLid=null;
+const eo3=q=>1-Math.pow(1-q,3),eio=q=>q<.5?4*q*q*q:1-Math.pow(-2*q+2,3)/2,cl01=q=>q<0?0:q>1?1:q;
+const txGl=(x,y,f)=>TXG.charCodeAt((hsh(x,y,f)*TXG.length)|0);
+const TXE={
+  decrypt:{dur:1.4,flash:.7,lock:(c,x,y,r1)=>.15+.6*(x-c.x0)/c.bw+.25*r1,
+    at(c,x,y,r1,r2,r3,p,L,o){o.code=txGl(x,y,c.fq);o.v=.35+.65*hsh(x,y,c.fq+9)}},
+  scatter:{dur:1.6,flash:.3,lock:(c,x,y,r1)=>.62+.3*r1,
+    at(c,x,y,r1,r2,r3,p,L,o){const q=p/L,f=q<.25?eo3(q/.25):1-Math.pow((q-.25)/.75,2),a=Math.atan2((y-c.cy)/c.asp,x-c.cx)+(r2-.5)*1.4,R=(.3+.7*r3)*c.span*.7;
+      o.dx=Math.cos(a)*R*f;o.dy=(Math.sin(a)*R*.7+R*.35)*f*c.asp;o.v=1-.35*f}},
+  assemble:{dur:1.4,flash:.5,lock:(c,x,y,r1)=>.25+.65*r1,
+    at(c,x,y,r1,r2,r3,p,L,o){const f=1-eo3(cl01(p/L));o.dx=(r2*gw-x)*f;o.dy=(r3*gh-y)*f;o.v=.5+.5*(1-f)}},
+  laseretch:{dur:1.6,flash:1,lock:(c,x,y)=>.85*(x-c.x0)/c.bw+.04*(y-c.y0)/c.bh,
+    at(c,x,y,r1,r2,r3,p,L,o){o.v=0},
+    extra(c,st){if(c.p>.9)return;const X=c.x0+c.p/.85*c.bw,hy=c.y0+((txClock/14)|0)%c.bh;
+      for(let y=0;y<c.y0;y++)st(X,y,.18,124);for(let y=c.y0-1;y<=c.y1+1;y++)st(X,y,.5,124);st(X,hy,1.6,42);st(X+1,hy,.8,43)}},
+  crumble:{dur:2,flash:.3,lock:(c,x,y,r1)=>1-((c.y1-y)/c.bh*.45+r1*.05),
+    at(c,x,y,r1,r2,r3,p,L,o){const f=1-L,q=Math.max(0,Math.min(p-f,L-p));o.dy=(gh-c.y0)*4*(.6+r2*.6)*q*q;o.dx=(r3-.5)*q*8;o.v=1-Math.min(1,q*2)*.7}},
+  burn:{dur:2,flash:.8,pre(c){const ox=c.click?c.cx:c.x0+hsh(c.seed,1,1)*c.bw,oy=c.click?c.cy:c.y1;c.bx=ox;c.by=oy;
+      c.bd=Math.max(Math.hypot(c.x0-ox,(c.y0-oy)*1.6),Math.hypot(c.x1-ox,(c.y0-oy)*1.6),Math.hypot(c.x0-ox,(c.y1-oy)*1.6),Math.hypot(c.x1-ox,(c.y1-oy)*1.6))||1},
+    lock(c,x,y){return .5+Math.hypot(x-c.bx,(y-c.by)*1.6)/c.bd*.45},
+    at(c,x,y,r1,r2,r3,p,L,o){const b=(L-.5),d=p-b;
+      if(d<-.06)return;if(d<0){o.v=1+.3*hsh(x,y,c.fq);return}
+      if(d<.12){const k=d/.12;o.v=1.4*(.6+.4*hsh(x,y,c.fq))*(1-k*.5);o.dy=-k*2*(.5+r2);o.code=[94,42,39,34][(hsh(x,y,c.fq)*4)|0];return}
+      o.v=hsh(x,y,c.fq>>2)<.06?.25:0}},
+  vhstape:{dur:1.2,flash:0,lock:()=>1,
+    at(c,x,y,r1,r2,r3,p,L,o){const env=Math.sin(Math.PI*p),ft=(c.t*14)|0,band=((y+c.seed%5)/(2+(c.seed%3)))|0;
+      const tear=hsh(band,ft,c.seed)<.45?(hsh(band,ft+1,c.seed)-.5)*c.bw*.5:0;
+      o.dx=(tear+Math.sin(y*.9+c.t*30)*.6)*env;o.v=1-.35*env*hsh(x,y,ft);o.gx=env>.2?2:0},
+    extra(c,st){const env=Math.sin(Math.PI*c.p),Y=c.y0-2+((c.p*3)%1)*(c.bh+4);for(let x=c.x0-3;x<=c.x1+3;x++)if(hsh(x,c.fq,7)<.6)st(x,Y,.55*env*hsh(x,c.fq,9),126)}},
+  blackhole:{dur:2,flash:0,lock:()=>1,
+    at(c,x,y,r1,r2,r3,p,L,o){const s=Math.sin(Math.PI*p),ax=x-c.cx,ay=(y-c.cy)/c.asp,r0=Math.hypot(ax,ay),a0=Math.atan2(ay,ax);
+      const r=r0*(1-s*.98),a=a0+s*s*(5+4*(1-r0/(c.span*.6+1)));
+      o.dx=c.cx+Math.cos(a)*r-x;o.dy=c.cy+Math.sin(a)*r*c.asp-y;o.v=r<.7&&s>.85?0:1-s*.4},
+    extra(c,st){const s=Math.sin(Math.PI*c.p);if(s<.3)return;const n=16;for(let i=0;i<n;i++){const a=i/n*TAU+c.t*5;st(c.cx+Math.cos(a)*1.6,c.cy+Math.sin(a)*1.6*c.asp,s*1.2,111)}}},
+  fireworks:{dur:2,flash:.6,lock:(c,x,y,r1)=>.88+.12*r1,
+    at(c,x,y,r1,r2,r3,p,L,o){const k=Math.min(2,Math.max(0,((x-c.x0)/c.bw*3)|0)),bx=c.x0+c.bw*(.2+.3*k)+(hsh(c.seed,k,5)-.5)*c.bw*.1,by=c.cy;
+      const a=Math.atan2((y-by)/c.asp,x-bx)+(r2-.5)*.9,sp=(.5+r3)*c.span*.5,g=c.span*.9;
+      const bal=t=>[Math.cos(a)*sp*t,(Math.sin(a)*sp*t-sp*.6*t+g*t*t)*c.asp];
+      if(p<.55){const t=p/.55,b=bal(t);o.dx=b[0];o.dy=b[1];o.v=(1.4*(1-t)+.25)*(hsh(x,y,c.fq)<.8?1:.3)}
+      else{const b=bal(1),e=eio(cl01((p-.55)/(L-.55)));o.dx=b[0]*(1-e);o.dy=b[1]*(1-e);o.v=.5+.5*e}}},
+  matrix:{dur:2,flash:.9,pre(c){c.mh=c.bh+18},
+    lock(c,x,y){const dl=hsh(x,c.seed,3)*.4,sp=.45+hsh(x,c.seed,4)*.25;return Math.min(.98,dl+sp*(y-(c.y0-10))/c.mh)},
+    at(c,x,y,r1,r2,r3,p,L,o){o.v=0},
+    extra(c,st){if(c.p>.98)return;for(let x=c.x0-2;x<=c.x1+2;x++){const dl=hsh(x,c.seed,3)*.4,sp=.45+hsh(x,c.seed,4)*.25,h=c.y0-10+(c.p-dl)/sp*c.mh;
+      if(h<c.y0-10||h>c.y1+8)continue;st(x,h,1.5,txGl(x,h|0,c.fq));for(let i=1;i<7;i++)st(x,h-i,.8*(1-i/7),txGl(x,(h|0)-i,c.fq>>1))}}},
+  glitch:{dur:1,flash:.4,lock:(c,x,y,r1)=>.7+.3*r1,
+    at(c,x,y,r1,r2,r3,p,L,o){const f=c.fq;o.dx=(hsh(y,f,c.seed)<.3?(hsh(y,f+1,c.seed)-.5)*8:0)+(hsh(x,y,f)<.08?(hsh(x,f,y)-.5)*4:0);
+      o.dy=hsh(x,f,2)<.05?(hsh(f,x,3)<.5?-1:1):0;if(hsh(x,y,f+3)<.15)o.v=hsh(y,x,f)*1.5;if(hsh(x,y,f+5)<.3)o.code=txGl(x,y,f);o.gx=hsh(y,f,9)<.2?3:0}},
+  bubbles:{dur:1.8,flash:1,lock:(c,x,y,r1)=>.35+.55*r1,
+    at(c,x,y,r1,r2,r3,p,L,o){const q=cl01(p/L);o.dy=(c.bh+4+r2*c.bh*1.5)*(1-eo3(q));o.dx=Math.sin(q*9+r3*6)*1.5*(1-q);o.v=.5+.3*q;o.code=q<.5?111:79}},
+  wipe:{dur:.9,flash:.9,lock(c,x,y){const u=(x-c.x0)/c.bw,w=(y-c.y0)/c.bh;return .05+.85*[u,1-u,w,1-w][c.dir]},
+    at(c,x,y,r1,r2,r3,p,L,o){o.v=0},
+    extra(c,st){const q=(c.p-.05)/.85;if(q<0||q>1)return;
+      if(c.dir<2){const X=c.dir?c.x1-q*c.bw:c.x0+q*c.bw;for(let y=c.y0-1;y<=c.y1+1;y++)st(X,y,1.3,124)}
+      else{const Y=c.dir===2?c.y0+q*c.bh:c.y1-q*c.bh;for(let x=c.x0-1;x<=c.x1+1;x++)st(x,Y,1.3,45)}}},
+  slide:{dur:1.3,flash:.4,pre(c,idx,m){
+      const has=new Uint8Array(gw);for(let i=0;i<m;i++)has[idx[i]%gw]=1;if(!txLid||txLid.length!==gw)txLid=new Int16Array(gw);
+      let n=-1,prev=0;for(let x=0;x<gw;x++){if(has[x]&&!prev)n++;txLid[x]=Math.max(0,n);prev=has[x]}c.nl=n+1},
+    lock(c,x){return .15+txLid[x]/Math.max(1,c.nl)*.6},
+    at(c,x,y,r1,r2,r3,p,L,o){const e=1-eo3(cl01(p/L)),l=txLid[x],d=c.dir===2?(l&1?2:3):c.dir===3?(l&1):c.dir;
+      if(d===0){o.dx=(gw-c.x0+2)*e;o.gx=e>.05?2:0}else if(d===1){o.dx=-(c.x1+2)*e;o.gx=e>.05?-2:0}
+      else if(d===2){o.dy=-(c.y1+3)*e}else{o.dy=(gh-c.y0+3)*e}}},
+  pour:{dur:1.8,flash:.2,lock:(c,x,y,r1)=>.18+(c.y1-y)/c.bh*.7+r1*.06,
+    at(c,x,y,r1,r2,r3,p,L,o){const fd=.18,q=(p-(L-fd))/fd;if(q<0){o.v=0;return}o.dy=-(y+2)*(1-q*q);o.dx=Math.sin(y+c.t*20)*.3;o.gy=-2}},
+  waves:{dur:1.6,flash:0,lock:()=>1,
+    at(c,x,y,r1,r2,r3,p,L,o){const env=Math.sin(Math.PI*p),A=Math.max(1.5,c.bh*.35),s=Math.sin(x*.35-p*14);
+      o.dy=s*A*env;o.dx=Math.cos(y*.5-p*10)*.8*env;o.v=1-.25*env*(.5+.5*s)}},
+  sweep:{dur:1.1,flash:1,lock(c,x,y){const w=(y-c.y0)/c.bh;return .05+.85*(c.dir&1?1-w:w)},
+    at(c,x,y,r1,r2,r3,p,L,o){o.v=0},
+    extra(c,st){const q=(c.p-.05)/.85;if(q<0||q>1)return;const Y=c.dir&1?c.y1-q*c.bh:c.y0+q*c.bh;
+      for(let x=0;x<gw;x++)st(x,Y,x>=c.x0-1&&x<=c.x1+1?1.2:.4,45)}},
+  unstable:{dur:1.3,flash:.5,lock:(c,x,y,r1)=>.35+.6*r1,
+    at(c,x,y,r1,r2,r3,p,L,o){const a=2*(1-p/L*.5);o.dx=Math.round((hsh(x,y,c.fq)*2-1)*a);o.dy=Math.round((hsh(y,x,c.fq)*2-1)*a*.5);
+      o.v=.6+.6*hsh(x,y,c.fq+2);if(hsh(x,y,c.fq+4)<.3)o.code=txGl(x,y,c.fq)}},
+  smoke:{dur:2.2,flash:.2,lock:()=>1,
+    at(c,x,y,r1,r2,r3,p,L,o){const s=p<.5?eio(p*2):eio((1-p)*2);
+      o.dy=-s*(4+r1*c.bh*1.2);o.dx=s*((vn(x*.2,y*.2+c.seed%97)-.5)*c.bh*1.6+(r2-.5)*6);o.v=1-s*1.05;if(s>.3)o.code=s>.6?9617:9618}},
+  rings:{dur:1.6,flash:0,lock:()=>1,
+    pre(c){c.rm=c.span*.75+6},
+    at(c,x,y,r1,r2,r3,p,L,o){const ax=x-c.cx,ay=(y-c.cy)/c.asp,d=Math.hypot(ax,ay)||1;let push=0,lit=0;
+      for(let i=0;i<3;i++){const rr=(p-i*.18)/.6*c.rm;if(rr<0)continue;const z=(d-rr)/1.6,b=Math.exp(-z*z)*(1-p*.6);push+=b;lit+=b}
+      o.dx=ax/d*push*2.2;o.dy=ay/d*push*2.2*c.asp;o.v=1+lit*.8},
+    extra(c,st){for(let i=0;i<3;i++){const rr=(c.p-i*.18)/.6*c.rm;if(rr<.5)continue;const n=Math.max(12,rr*7),f=.4*(1-c.p);
+      for(let j=0;j<n;j++){const a=j/n*TAU;st(c.cx+Math.cos(a)*rr,c.cy+Math.sin(a)*rr*c.asp,f,111)}}}}
+};
+function txPick(){
+  if(P.txFx!=='random')return txLast=P.txFx;
+  if(!txBag.length){txBag=TXFX.slice();for(let i=txBag.length-1;i>0;i--){const j=(Math.random()*(i+1))|0,t=txBag[i];txBag[i]=txBag[j];txBag[j]=t}
+    if(txBag[txBag.length-1]===txLast)txBag.unshift(txBag.pop())}
+  return txLast=txBag.pop()}
+/* ox,oy = canvas px of a click on the text (rings / blackhole / burn start there), else the logo centre */
+function txTrigger(ox,oy){
+  if(!P.logoOn||!(P.logoText||'').trim()){say('text fx: switch on render logo first');return false}
+  const name=txPick();TX={name,t0:txClock,dur:TXE[name].dur*1000/P.txSpeed,seed:(Math.random()*1e6)|0,dir:(Math.random()*4)|0,
+    ox:ox==null?null:ox/cw,oy:oy==null?null:oy/ch};say('text fx: '+name);return true}
+function txTick(dt){
+  if(!paused)txClock+=dt*1000;
+  if(!P.logoOn)return;
+  const idle=!TX,on=!!onset[P.txBand];
+  if(P.txTrig==='beat'&&on&&!txBeatPrev&&(idle||txClock-TX.t0>250))txTrigger();
+  txBeatPrev=on;
+  if(idle&&P.txTrig==='timer'&&txClock-txDone>=P.txEvery*1000)txTrigger();
+  else if(idle&&P.txLoop&&txClock-txDone>=600/P.txSpeed)txTrigger();
+}
+function txApply(){
+  const R=TX,E=TXE[R.name],el=txClock-R.t0,S=Math.max(1,P.txSettle);
+  if(el>R.dur+S){TX=null;txDone=txClock;return}
+  const n=gw*gh,b=logoBuf,cd=logoCode;
+  if(txIdx.length<n)txIdx=new Int32Array(n);
+  if(!txV||txV.length!==n){txV=new Float32Array(n);txC=new Uint16Array(n)}
+  let m=0,x0=1e9,y0=1e9,x1=-1,y1=-1;
+  for(let k=0;k<n;k++)if(b[k]>0){txIdx[m++]=k;txV[k]=b[k];txC[k]=cd[k];const x=k%gw,y=(k/gw)|0;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}
+  if(!m)return;
+  b.fill(0);cd.fill(0);
+  const bw=Math.max(1,x1-x0),bh=Math.max(1,y1-y0),asp=cw/ch;
+  const c={p:el/R.dur,t:txClock/1000,fq:(txClock/45)|0,seed:R.seed,dir:R.dir,x0,y0,x1,y1,bw,bh,asp,span:Math.max(bw,bh/asp),
+           click:R.ox!=null,cx:R.ox!=null?R.ox:(x0+x1)/2,cy:R.oy!=null?R.oy:(y0+y1)/2};
+  const st=(fx,fy,v,code)=>{const x=Math.round(fx),y=Math.round(fy);if(x<0||y<0||x>=gw||y>=gh||v<=.01)return;const k=y*gw+x;if(v>b[k]){b[k]=v;if(code)cd[k]=code}};
+  if(E.pre)E.pre(c,txIdx,m);
+  const o={dx:0,dy:0,v:1,code:0,gx:0,gy:0},fl=E.flash||0;
+  for(let i=0;i<m;i++){const k=txIdx[i],x=k%gw,y=(k/gw)|0,r1=hsh(x,y,R.seed),r2=hsh(y,x,R.seed+1),r3=hsh(x+y*7,R.seed,3);
+    const L=cl01(E.lock(c,x,y,r1)),tl=L*R.dur,locked=el>=tl;
+    o.dx=0;o.dy=0;o.v=1;o.code=0;o.gx=0;o.gy=0;E.at(c,x,y,r1,r2,r3,locked?L:c.p,L,o);
+    let dx=o.dx,dy=o.dy,v=o.v,code=o.code,gx=o.gx,gy=o.gy;
+    if(locked){const q=Math.min(1,(el-tl)/S),e=eo3(q);dx*=1-e;dy*=1-e;v=v+(1-v)*e+fl*(1-q);if(q>.5)code=0;gx=gy=0}
+    const v0=txV[k];
+    if(v>.01)st(x+dx,y+dy,v0*v,code||txC[k]);
+    if((gx||gy)&&v>.01)st(x+dx+gx,y+dy+gy,v0*v*.4,code||txC[k])}
+  if(E.extra)E.extra(c,st)}
 
 /* ------------------------------------------------------------------ step */
 function step(dt){
@@ -1206,16 +1347,26 @@ function audioTick(dt){
 function pos(e){const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]}
 function getP(e){let p=ptrs.get(e.pointerId);if(!p){p={x:0,y:0,lx:0,ly:0,down:false,moved:false,t0:0,s:0,mouse:e.pointerType==='mouse',inside:true,acc:0};ptrs.set(e.pointerId,p)}return p}
 let rmb=false,spaceHeld=false,panP=null,didPan=false;
-function startPan(e){panP={id:e.pointerId,x:e.clientX,y:e.clientY};didPan=true;document.body.classList.add('panning');
-  try{cv.setPointerCapture(e.pointerId)}catch(_){}}
+/* pan: offset is absolute from the grab point and applied straight in pointermove. a zoom still easing is finished
+   first, otherwise frame() keeps re-deriving pan from the zoom anchor and swallows the start of the drag */
+function startPan(e){
+  if(Z!==Zt)Z=Zt;anchor=null;
+  panP={id:e.pointerId,x0:e.clientX,y0:e.clientY,px:panX,py:panY};didPan=true;document.body.classList.add('panning');layout();
+  try{stage.setPointerCapture(e.pointerId)}catch(_){}}
+function endPan(e){if(!panP||(e&&e.pointerId!=null&&e.pointerId!==panP.id))return;
+  const id=panP.id;panP=null;document.body.classList.remove('panning');try{stage.releasePointerCapture(id)}catch(_){}}
 stage.addEventListener('pointerdown',e=>{
   if(e.button===2)rmb=true;
-  if(e.button===1||(e.button===0&&spaceHeld)){e.preventDefault();startPan(e)}
+  if(e.button===1||(e.button===0&&spaceHeld)){e.preventDefault();e.stopPropagation();startPan(e)}
 },true);
-addEventListener('pointerup',e=>{if(e.button===2)rmb=false;
-  if(panP&&panP.id===e.pointerId){panP=null;document.body.classList.remove('panning')}});
+stage.addEventListener('mousedown',e=>{if(e.button===1||spaceHeld)e.preventDefault()},true);   /* blocks windows middle-click autoscroll */
+stage.addEventListener('auxclick',e=>{if(e.button===1)e.preventDefault()});
+addEventListener('pointerup',e=>{if(e.button===2)rmb=false;endPan(e)});
+addEventListener('pointercancel',endPan);
+stage.addEventListener('lostpointercapture',endPan);
 addEventListener('pointermove',e=>{if(!panP||panP.id!==e.pointerId)return;
-  panX+=e.clientX-panP.x;panY+=e.clientY-panP.y;panP.x=e.clientX;panP.y=e.clientY;layout()});
+  panX=panP.px+e.clientX-panP.x0;panY=panP.py+e.clientY-panP.y0;layout()});
+addEventListener('blur',()=>{spaceHeld=false;document.body.classList.remove('pan');endPan()});
 addEventListener('wheel',e=>{
   if(!(e.ctrlKey||rmb))return;e.preventDefault();
   const r=stage.getBoundingClientRect();
@@ -1245,6 +1396,8 @@ function up(e){
   const mm=P.mouseMode;
   if(p.down&&!p.moved&&e.type==='pointerup'&&mm!=='none'&&mm!=='crosshair'&&!(P.logoDrag&&P.logoOn)){
     const c=P.charge?Math.min(1,(performance.now()-p.t0)/1100):.25;disturb(p.x,p.y,c,mm==='shockwave'?'shock':P.clickStyle)}
+  if(p.down&&!p.moved&&e.type==='pointerup'&&LGON&&!(P.logoDrag&&P.logoOn)){const r=logoRect,pd=Math.max(cw,ch);
+    if(p.x>=r[0]-pd&&p.x<=r[0]+r[2]+pd&&p.y>=r[1]-pd&&p.y<=r[1]+r[3]+pd)txTrigger(p.x,p.y)}
   p.down=false;if(!p.mouse){p.inside=false;setTimeout(()=>{const q=ptrs.get(e.pointerId);if(q&&!q.down)ptrs.delete(e.pointerId)},600)}
 }
 cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
@@ -1543,6 +1696,16 @@ section('text / logo',true,(b,body)=>{
   b.sub('position');
   b.s('x','logoX',0,1,.005);b.s('y','logoY',0,1,.005);
   b.tog('drag on canvas to place','logoDrag');
+  b.sub('text fx');
+  b.raw('effect',cycle(['random',...TXFX],()=>P.txFx,v=>{P.txFx=v}));
+  b.seg('trigger','txTrig',['click','beat','timer']);
+  b.cyc('beat band','txBand',SRC,{when:()=>P.txTrig==='beat'});
+  b.s('every (s)','txEvery',.5,20,.5,{when:()=>P.txTrig==='timer'});
+  b.s('speed','txSpeed',.25,4,.05);
+  b.s('settle (ms)','txSettle',0,1000,10);
+  b.tog('loop','txLoop');
+  const txa=el('div','acts');txa.append(actBtn('run now  [t]',()=>txTrigger()));b.raw('',txa);
+  b.note('clicking the text on the canvas and the <b>t</b> key always fire. <b>random</b> deals all 20 effects in shuffled order with no repeats; pick a name to pin one. <b>beat</b> fires on onsets of the chosen band from the audio section. <b>loop</b> runs effects back to back. <b>settle</b> = how long each cell takes to ease into place once the effect releases it.');
   b.note('<b>bitmap</b>: this file\'s own 5x7 letterforms, rebuilt per style. pixel = cell blocks; ascii = rebuilt out of | = / \\ + #.<br><b>figlet</b>: figlet.js fonts from jsDelivr. pixel = each character becomes a cell block as bright as its ink; ascii = the real characters, stamped at <b>cells / char</b> size. the rendered grid is saved with the scene, so exports never need the network.<br>both ripple, scatter and react like everything else. route <b>logo.pop</b> in audio to make it pulse.');
 });
 
@@ -1652,9 +1815,9 @@ addEventListener('keydown',e=>{
     if(e.key==='-'||e.key==='_'){zoomTo(Zt/1.25);e.preventDefault();return}
     if(e.key==='0'){zoomFit();e.preventDefault();return}}
   if(PLAY||e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.ctrlKey||e.metaKey||e.altKey)return;
-  if(e.code==='Space'&&!spaceHeld){spaceHeld=true;didPan=false;document.body.classList.add('pan')}
+  if(e.code==='Space'&&!spaceHeld){spaceHeld=true;didPan=false;document.body.classList.add('pan');const fa=document.activeElement;if(fa&&fa!==document.body&&fa.blur)fa.blur()}
   if(e.code==='Space'){e.preventDefault()}
-  else if(e.key==='h')toggleRack();else if(e.key==='p')savePNG();else if(e.key==='c')clearAll();else if(e.key==='r')toggleRec();
+  else if(e.key==='h')toggleRack();else if(e.key==='p')savePNG();else if(e.key==='c')clearAll();else if(e.key==='r')toggleRec();else if(e.key==='t')txTrigger();
 });
 addEventListener('keyup',e=>{
   if(e.code!=='Space')return;spaceHeld=false;document.body.classList.remove('pan');
@@ -1678,6 +1841,7 @@ function frame(now){
   if(Math.abs(Z-Zt)>.0005){Z+=(Zt-Z)*.28;if(Math.abs(Z-Zt)<=.0005)Z=Zt;
     if(anchor){panX=anchor[2]-anchor[0]*Z;panY=anchor[3]-anchor[1]*Z}layout()}
   audioTick(dt);
+  txTick(dt);
   if(!paused)step(dt);
   fxTick(dt);
   draw();
