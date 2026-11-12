@@ -24,10 +24,10 @@ The logo look GLYPHLUX is aiming for is **Amiga scene ASCII lettering**, the sty
 
 ## 2. Current build — C:\Tools\glyphlux\glyphlux.html
 
-The current build is always `glyphlux.html` (see section 5, "Files & versions"). At setup (2026-11-12) it is build 6.1 (`glyphlux_6_1.html`, likely identical to `glyphlux_6.html`). The header mark inside the file still says "build 0.3".
+The current build is always `glyphlux.html` (see section 5, "Files & versions"). At setup (2026-11-12) it was build 6.1; build 7 (2026-11-12) added world size. The header mark inside the file still says "build 0.3".
 
 Built and tested:
-- **Render:** block / dither (Bayer 8x8) / ascii modes; char ramps incl. dense, shades, braille, blocks, boxdraw, cp437, custom. Pixel gap, contrast, density, invert. Canvas sizes incl. custom up to 4096.
+- **Render:** block / dither (Bayer 8x8) / ascii modes; char ramps incl. dense, shades, braille, blocks, boxdraw, cp437, custom. Pixel gap, contrast, density, invert. Canvas sizes incl. custom up to 4096, a 4096×4096 preset, and (build 7) a **world** slider that scales the fit-mode render world 1–4× the viewport (clamped 64–4096 px/axis).
 - **Colour:** 13 palette presets, custom stops, load/save palettes (.hex .gpl .json .txt). Colour by energy / value / source (source keeps imported media colours). Separate monochrome panel colours.
 - **Motion layers:** noise field, flow particles, water (wave sim + rain), glitch + scanlines.
 - **Effects stack:** plasma, interference, lissajous, voronoi, mandelbrot/julia, tunnel, rotozoom, starfield, matrix, fire, fluid, 3D geometry, reaction-diffusion, cellular automata, copper bars, metaballs, moiré, spiral, warp field. Blend modes, reorder, duplicates.
@@ -44,7 +44,7 @@ Built and tested:
 Known issues:
 - Loading a scene that switches into ascii mode **and** contains file layers throws a few `drawImage` errors for about a second, then recovers. Pre-existing (build 4 too). Small fix, not done yet.
 - `.txt` files are routed to the palette loader, so an asciiarena `.txt` won't load as art yet.
-- If pan still seems dead: with canvas size **fit**, 100% zoom exactly fills the view, so there's nothing to pan until you go past it.
+- With canvas size **fit** at world **1×**, 100% zoom exactly fills the view, so there's nothing to pan until you go past it. Raise the **world** slider (build 7) to make the render world larger than the view, which gives room to pan and zoom out.
 
 ---
 

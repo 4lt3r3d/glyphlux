@@ -10,18 +10,18 @@ Full history, feature list, roadmap and reference links are in the main doc, imp
 
 ## Where things stand (2026-11-12)
 
-- Current build: **build 6.1** = `glyphlux.html`. The header mark inside the file still says "build 0.3" (cosmetic, leave it unless asked).
-- Last thing built: build 6, the 20 text fx (decrypt, scatter, laseretch, burn …) plus the pan-after-zoom fix.
+- Current build: **build 7** = `glyphlux.html`. The header mark inside the file still says "build 0.3" (cosmetic, leave it unless asked).
+- Last thing built: build 7, world size — a fit-mode **world** slider (1–4× the view, clamped 64–4096 px/axis) plus a fixed **4096×4096** preset. Four edits in `glyphlux.html` (SIZES, DEF `world:1`, the `resize()` fit branch, one sidebar slider).
+- Before that: build 6, the 20 text fx (decrypt, scatter, laseretch, burn …) plus the pan-after-zoom fix.
 - Since then, research only, no code:
   - the asciiarena API dig;
   - the style analysis of 75,614 real logos (`logo-style-findings.md`, `logo_style_stats.json`).
 - Next build queue (user picks one per session):
-  0. **World size + zoom floor.** *Planned next build (decided 2026-11-12).*
-     - Problem: with canvas size `fit`, zooming out shows a small canvas surrounded by black.
-     - Add a world-size setting: fit / 2× / 4× / 8× the view. The canvas becomes that larger fixed world.
-     - Clamp minimum zoom so the world always fills the screen (never black edges).
-     - Keep a fixed world, not an endless field: exports, imports and logos need a definite frame.
-     - If 4×/8× is slow in ascii mode, do the tinted glyph cache fix (leftover ⑦) right after.
+  0. **World size + zoom floor.** ✅ **Done — build 7 (2026-11-12).**
+     - Shipped as a fit-mode **world** slider (1–4×, continuous) instead of fixed fit/2×/4×/8× steps, plus a fixed **4096×4096** preset. World dims clamp to 64–4096 px/axis so a big multiplier on a big monitor can't blow up the Float32 buffers.
+     - Zoom floor **left at 10%** (user's call): at 4096 px a world still fits on any normal window (fit ≈ 20% at 1080p); only a <~410 px-wide window can't show it all at once. The planned min-zoom clamp was not needed, so not added.
+     - Right-click + scroll zoom was already in the build (the wheel handler fires on `ctrlKey || rmb`), so nothing was added there.
+     - Perf: fps falls with size (240 → ~65 at 4× → ~45 at 4096²) — expected from the larger buffers. The tinted glyph cache (leftover ⑦) is still open if ascii at big sizes feels slow.
   1. **Logo A: Amiga import.** Latin-1 decoder, embedded Topaz font (rewtnull/amigafonts, GPL-FE, credit required). Let `.txt` load as art when it isn't a palette.
   2. **Logo B: imported art as a third logo source.** Next to bitmap / FIGlet, so all 20 text fx run on real logos.
   3. **Logo C: generator.** Approach still undecided: rule-based outliner, tile-based from the 3×3 patches, or both.

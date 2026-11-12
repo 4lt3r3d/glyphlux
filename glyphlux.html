@@ -214,7 +214,7 @@ function rampOf(key){
   const r=CHARSETS[key];if(!r)return ' #';const cs=[];if(typeof r==='string')cs.push(...new Set(r.replace(/\u00a0/g,'')));else for(let c=r[0];c<=r[1];c++)cs.push(String.fromCharCode(c));
   cs.sort((a,b)=>ink(a)-ink(b));let out=cs.join('');if(ink(out[0])>.002)out=' '+out;
   return RAMPC[key]=out}
-const SIZES={fit:null,'1920x1080':[1920,1080],'1080x1080':[1080,1080],'1080x1920':[1080,1920],'1500x500':[1500,500],custom:0};
+const SIZES={fit:null,'1920x1080':[1920,1080],'1080x1080':[1080,1080],'1080x1920':[1080,1920],'1500x500':[1500,500],'4096x4096':[4096,4096],custom:0};
 const SRC=['bass','mid','high','amp'];
 const TGT=['none','wave.kick','shock.kick','displace','bright','density','glitch','hot.color','speed','scale','logo.pop'];
 const MOUSE=['repel','gravity','ripple','smear','glitch zone','shockwave','crosshair','none'];
@@ -224,7 +224,7 @@ const DEF={
   mode:'dither',cell:7,ramp:'ascii',rampCustom:' .oO0@',levels:8,contrast:1.15,bias:0,gap:1,palette:'phosphor',colors:{bg:'#030604',stops:['#0e4d25','#22a64e','#3dff7a','#dcffe6']},colorBy:'energy',
   uiFollow:false,ui:{bg:'#060606',dim:'#333333',mid:'#7d7d7d',lit:'#cfcfcf',hot:'#ffffff'},invert:false,
   srcGain:1,srcSat:1,srcField:0,srcQuant:0,
-  size:'fit',cw:1280,chh:720,
+  size:'fit',cw:1280,chh:720,world:1,
   speed:1,
   fieldOn:true,field:.8,fieldScale:1,fieldDrift:1,
   ptcOn:true,ptc:1,count:2400,ptcSpeed:1.6,trail:.94,turb:1,
@@ -331,7 +331,7 @@ function zoomTo(z,ax,ay){
 function zoomFit(){P.zoomFit=true;anchor=null;Zt=zfit();syncUI()}
 function resize(){
   const sw=stage.clientWidth,sh=stage.clientHeight;
-  if(P.size==='fit'){W=Math.max(64,sw);H=Math.max(64,sh)}
+  if(P.size==='fit'){W=clamp(Math.round(sw*P.world),64,4096);H=clamp(Math.round(sh*P.world),64,4096)}
   else if(P.size==='custom'){W=clamp(P.cw|0,64,4096);H=clamp(P.chh|0,64,4096)}
   else{[W,H]=SIZES[P.size]}
   cv.width=W;cv.height=H;
@@ -1594,6 +1594,7 @@ section('render',true,b=>{
   b.tog('invert','invert');
   b.sub('canvas');
   b.cyc('size','size',Object.keys(SIZES),{re:'size'});
+  b.s('world','world',1,4,.1,{re:'size',when:()=>P.size==='fit'});
   const two=el('div','two');for(const k of ['cw','chh']){const i=el('input');i.type='number';i.min=64;i.max=4096;i.value=P[k];i.onchange=()=>{P[k]=clamp(+i.value||64,64,4096);i.value=P[k];resize()};refreshers.push(()=>{i.value=P[k]});two.append(i)}
   b.raw('w / h',two,{when:()=>P.size==='custom'});
 });
