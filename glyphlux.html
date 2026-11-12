@@ -231,6 +231,7 @@ const DEF={
   logoSrc:'bitmap',figFont:'Big',figKern:'default',figScale:2,figGrid:[],
   logoLevel:1,logoFit:true,logoBlend:'on top',logoColor:'palette',logoHex:'#ffffff',logoX:.5,logoY:.5,logoDrag:false,
   vidAudio:true,vidVol:.8,vidRate:1,vidLoop:true,extAudio:true,zoom:1,zoomFit:true,
+  camFlipH:true,camFlipV:false,camBright:1,camCon:1,camFreeze:false,
   clickStyle:'ripple',clickRadius:240,clickForce:1.2,clickDecay:1,charge:true,
   dragRadius:120,dragForce:1,dragDecay:.965,dragWake:.35,
   fx:[],smooth:.1,gifSecs:3,gifFps:20,gifW:480,recFmt:'webm',recFps:60,recMbps:12,recAudio:true,embedUrl:'',
@@ -525,6 +526,40 @@ async function loadMedia(L,file){
     catch(e){L.bmp=await createImageBitmap(file);L.kind='image'}}
   else{L.bmp=await createImageBitmap(file);L.kind='image';if(/\.gif$/i.test(file.name))say('gif loaded as a still: this browser has no ImageDecoder')}}
 
+/* ---- camera. getUserMedia, local device only. one layer in the fx stack; rgb is kept so color.by source shows the camera's own colours.
+   flips + brightness/contrast are applied when the frame is drawn, so they still work on a frozen frame. */
+let camL=null,camBusy=false;
+function camDraw(L){
+  const x=L.cx,v=L.cam,live=v&&v.readyState>=2&&v.videoWidth;
+  if(P.camFreeze){if(!L.snap&&live){const s=document.createElement('canvas');s.width=v.videoWidth;s.height=v.videoHeight;s.getContext('2d').drawImage(v,0,0);L.snap=s}}
+  else L.snap=null;
+  const src=L.snap||(live?v:null);
+  x.setTransform(1,0,0,1,0,0);x.filter='none';x.fillStyle='#000';x.fillRect(0,0,L.bw,L.bh);
+  if(src){const sw=src.videoWidth||src.width,sh=src.videoHeight||src.height,k=['cover','contain','stretch'].indexOf(L.c.variant);
+    let dw=W,dh=H;if(k!==2){const r=k===0?Math.max(W/sw,H/sh):Math.min(W/sw,H/sh);dw=sw*r;dh=sh*r}dw*=L.c.scale;dh*=L.c.scale;
+    const fh=P.camFlipH,fv=P.camFlipV;x.save();x.setTransform(fh?-1:1,0,0,fv?-1:1,fh?L.bw:0,fv?L.bh:0);
+    if(P.camBright!==1||P.camCon!==1)x.filter='brightness('+P.camBright+') contrast('+P.camCon+')';
+    x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(src,(W-dw)/2*L.kx,(H-dh)/2*L.ky,dw*L.kx,dh*L.ky);x.restore()}
+  readCanvas(L)}
+async function camStart(){
+  if(camL||camBusy)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('this browser has no camera access (getUserMedia)');return}
+  camBusy=true;if(ui.cam)ui.cam.textContent='starting...';let st;
+  try{st=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'},audio:false})}
+  catch(e){camBusy=false;camUI();say('camera blocked: '+(e.name||e)+'. needs permission, and https / localhost / a local file');return}
+  camBusy=false;
+  const v=document.createElement('video');v.muted=true;v.playsInline=true;v.srcObject=st;v.play().catch(()=>{});
+  const tr=st.getVideoTracks()[0],L=addFx('camera',{blend:'max',level:1,name:(tr&&tr.label)||'webcam'});L.cam=v;L.stream=st;camL=L;
+  if(tr)tr.addEventListener('ended',()=>{if(camL===L){removeFx(L);renderFx();say('camera disconnected')}});
+  renderFx();ui.fxSec.open=true;camUI();
+  const s=tr&&tr.getSettings?tr.getSettings():{};say('camera live'+(s.width?' '+s.width+'x'+s.height:'')+' > layer '+FX.length+' in effects')}
+function camStop(L){
+  if(L.stream)L.stream.getTracks().forEach(t=>t.stop());L.stream=null;if(L.cam){L.cam.pause();L.cam.srcObject=null}L.snap=null;
+  if(camL===L){camL=null;camUI()}}
+function camToggle(){if(camL){removeFx(camL);renderFx();say('camera off')}else camStart()}
+function camUI(){if(ui.cam)ui.cam.textContent=camL?'stop camera':'start camera';
+  if(ui.camn)ui.camn.textContent=camL?'live: '+(camL.c.name||'webcam')+'. it is a layer in effects.':'off. starts as its own layer in effects, next to any image / video / shader layers.'}
+
 /* ---- 3d model files */
 function parseOBJ(txt){const v=[],t=[];for(const ln of txt.split('\n')){const p=ln.trim().split(/\s+/);
     if(p[0]==='v')v.push(+p[1],+p[2],+p[3]);else if(p[0]==='f'){const ix=p.slice(1).map(s=>{const i=parseInt(s);return i<0?v.length/3+i:i-1});for(let i=1;i<ix.length-1;i++)t.push(ix[0],ix[i],ix[i+1])}}
@@ -641,7 +676,8 @@ const FXDEF={
       else if(L.kind==='gif'){const tm=(L.t*1000)%L.total;let f=L.frames[0];for(const g of L.frames)if(g.t<=tm)f=g;else break;fitDraw(L,f.bmp,f.bmp.width,f.bmp.height)}
       else if(L.bmp)fitDraw(L,L.bmp,L.bmp.width,L.bmp.height);else{L.cx.fillStyle='#000';L.cx.fillRect(0,0,L.bw,L.bh)}readCanvas(L)}},
   shader:{name:'glsl shader',pl:'gamma',sl:'supersample',rgb:true,init(L){allocCanvas(L);if(!L.prog)buildShader(L)},upd(L,dt){drawShader(L,dt)}},
-  model:{name:'3d model',pl:'solid fill',d:{p:0},file:true,init(L){allocCanvas(L)},upd(L){if(L.mesh)drawMesh(L,L.mesh);else{L.cx.fillStyle='#000';L.cx.fillRect(0,0,L.bw,L.bh);readCanvas(L)}}}
+  model:{name:'3d model',pl:'solid fill',d:{p:0},file:true,init(L){allocCanvas(L)},upd(L){if(L.mesh)drawMesh(L,L.mesh);else{L.cx.fillStyle='#000';L.cx.fillRect(0,0,L.bw,L.bh);readCanvas(L)}}},
+  camera:{name:'camera',pl:'gamma',sl:'zoom',variants:['cover','contain','stretch'],rgb:true,file:true,init(L){allocCanvas(L)},upd(L){camDraw(L)},stop(L){camStop(L)}}
 };
 const FXLIB=Object.keys(FXDEF).filter(k=>!FXDEF[k].file);
 function addFx(type,cfg){
@@ -649,7 +685,7 @@ function addFx(type,cfg){
   const c=Object.assign({type,on:true,open:true,level:d.kind==='warp'?.4:.8,blend:FX.length?'max':'add',speed:1,scale:1,p:.5,variant:d.variants?d.variants[0]:''},d.d||{},cfg||{});
   const L={c,def:d,t:0,dt:0};if(d.init)d.init(L);else if(d.upd)allocBuf(L);
   FX.push(L);if(!P.fx.includes(c))P.fx.push(c);return L}
-function removeFx(L){const i=FX.indexOf(L);if(i<0)return;FX.splice(i,1);P.fx.splice(P.fx.indexOf(L.c),1);if(L.vid){L.vid.pause();URL.revokeObjectURL(L.vid.src)}
+function removeFx(L){const i=FX.indexOf(L);if(i<0)return;FX.splice(i,1);P.fx.splice(P.fx.indexOf(L.c),1);if(L.def.stop)L.def.stop(L);if(L.vid){L.vid.pause();URL.revokeObjectURL(L.vid.src)}
   if(L.gl3){const e=L.gl3.getExtension('WEBGL_lose_context');e&&e.loseContext()}}
 function moveFx(L,d){const i=FX.indexOf(L),j=i+d;if(j<0||j>=FX.length)return;FX.splice(j,0,FX.splice(i,1)[0]);P.fx.splice(j,0,P.fx.splice(i,1)[0])}
 function fxReinit(){for(const L of FX){if(L.def.init)L.def.init(L);else if(L.def.upd)allocBuf(L)}}
@@ -1429,6 +1465,17 @@ section('video',false,b=>{
   b.raw('',a);
   ui.vidn=b.note('');
   b.note('video keeps its audio by default and feeds the same analyser as the audio section, so routing, meters and reactivity treat it exactly like a loaded track. an audio file and a video with sound can run at once.');
+});
+
+section('camera',false,b=>{
+  ui.cam=actBtn('start camera',camToggle);b.raw('',ui.cam);
+  ui.camn=b.note('');camUI();
+  b.tog('flip horizontal','camFlipH');
+  b.tog('flip vertical','camFlipV');
+  b.s('brightness','camBright',0,3,.01);
+  b.s('contrast','camCon',0,3,.01);
+  b.tog('freeze frame','camFreeze');
+  b.note('blend, level, zoom and gamma for the camera live on its layer in <b>effects</b>. set <b>color.by</b> to <b>source</b> to keep its real colours (with several image / video / camera layers on, the lowest one in the stack supplies colour). the stream never leaves this tab and is not saved into scenes or exports.');
 });
 
 section('audio',false,(b,body)=>{
